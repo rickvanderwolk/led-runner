@@ -17,6 +17,8 @@ import json
 
 class LEDGame:
     HIGHSCORE_FILE = "highscore.txt"
+    FASTFORWARD_MULTIPLIER = 3  # How much faster when holding d-pad right
+
     # Game states
     STATE_PLAYING = 'playing'
     STATE_PAUSED = 'paused'
@@ -354,6 +356,15 @@ class LEDGame:
         key = (required_player, button)
         return key in self.pressed_buttons
 
+    def is_fastforward_held(self):
+        """Check if any controller has d-pad right held"""
+        for js in self.joysticks:
+            if js.get_numhats() > 0:
+                hat = js.get_hat(0)
+                if hat[0] == 1:  # Right on d-pad
+                    return True
+        return False
+
     def get_available_colors(self):
         """Return available colors based on score and player count"""
         if self.num_players == 1:
@@ -578,6 +589,7 @@ class LEDGame:
         print("\n🎮 LED Runner")
         print("━━━━━━━━━━━━━━━━━━━━━━━━━━")
         print("START = Pause / Resume / New game")
+        print("D-PAD RIGHT = Fast-forward (hold)")
         print("\nGame starting...")
         print("CTRL+C to quit\n")
 
@@ -587,7 +599,11 @@ class LEDGame:
 
                 if self.state == self.STATE_PLAYING:
                     current_time = time.time()
-                    if current_time - self.last_update >= self.current_speed:
+                    # Apply fast-forward if d-pad right is held
+                    effective_speed = self.current_speed
+                    if self.is_fastforward_held():
+                        effective_speed = self.current_speed / self.FASTFORWARD_MULTIPLIER
+                    if current_time - self.last_update >= effective_speed:
                         self.update_obstacles()
                         self.last_update = current_time
                     if self.state == self.STATE_PLAYING:
