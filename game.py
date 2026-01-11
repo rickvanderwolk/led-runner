@@ -357,16 +357,15 @@ class LEDGame:
         return key in self.pressed_buttons
 
     def is_fastforward_held(self):
-        """Check if any controller has fast-forward button held"""
-        fastforward_btn = self.game_config['buttons'].get('fastforward')
+        """Check if any controller has fast-forward (d-pad right) held"""
         for js in self.joysticks:
-            # Check configured button (for SNES controllers)
-            if fastforward_btn is not None and js.get_button(fastforward_btn):
+            # Check axis 0 (d-pad horizontal on SNES controllers)
+            if js.get_numaxes() > 0 and js.get_axis(0) > 0.5:
                 return True
             # Also check hat/d-pad (for other controllers)
             if js.get_numhats() > 0:
                 hat = js.get_hat(0)
-                if hat[0] == 1:  # Right on d-pad
+                if hat[0] == 1:
                     return True
         return False
 
@@ -606,8 +605,14 @@ class LEDGame:
                     current_time = time.time()
                     # Apply fast-forward if d-pad right is held
                     effective_speed = self.current_speed
-                    if self.is_fastforward_held():
+                    is_ff = self.is_fastforward_held()
+                    if is_ff:
+                        if not getattr(self, '_was_fastforward', False):
+                            print("⏩ Fast-forward!")
+                            self._was_fastforward = True
                         effective_speed = self.current_speed / self.FASTFORWARD_MULTIPLIER
+                    elif getattr(self, '_was_fastforward', False):
+                        self._was_fastforward = False
                     if current_time - self.last_update >= effective_speed:
                         self.update_obstacles()
                         self.last_update = current_time
