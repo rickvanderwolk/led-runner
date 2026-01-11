@@ -5,6 +5,17 @@ set -e
 echo "🎮 LED Runner - Installation"
 echo "================================"
 
+# Create config.json from example if it doesn't exist
+if [ ! -f config.json ]; then
+    echo ""
+    echo "📄 Creating config.json from config.example.json..."
+    cp config.example.json config.json
+    echo "   Edit config.json to customize your settings"
+else
+    echo ""
+    echo "📄 config.json already exists, keeping your settings"
+fi
+
 # Install system dependencies
 echo ""
 echo "📦 Installing system dependencies..."
