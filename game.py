@@ -357,8 +357,13 @@ class LEDGame:
         return key in self.pressed_buttons
 
     def is_fastforward_held(self):
-        """Check if any controller has d-pad right held"""
+        """Check if any controller has fast-forward button held"""
+        fastforward_btn = self.game_config['buttons'].get('fastforward')
         for js in self.joysticks:
+            # Check configured button (for SNES controllers)
+            if fastforward_btn is not None and js.get_button(fastforward_btn):
+                return True
+            # Also check hat/d-pad (for other controllers)
             if js.get_numhats() > 0:
                 hat = js.get_hat(0)
                 if hat[0] == 1:  # Right on d-pad

@@ -14,7 +14,9 @@
       "red": 1,
       "green": 3,
       "blue": 0,
-      "start": 9
+      "start": 9,
+      "fastforward": 7,
+      "_fastforward_comment": "D-pad right on SNES controller (use pygame joystick tester to find)"
     },
     "player_color": {
       "r": 255,
