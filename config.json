@@ -9,6 +9,8 @@
   },
   "game": {
     "speed": 0.3,
+    "fastforward_multiplier": 3,
+    "_fastforward_comment": "Speed multiplier when holding d-pad right",
     "buttons": {
       "yellow": 2,
       "red": 1,
@@ -22,11 +24,6 @@
       "b": 255
     },
     "_player_color_comment": "White so it doesn't conflict with blue obstacle",
-    "target_color": {
-      "r": 255,
-      "g": 255,
-      "b": 0
-    },
     "success_color": {
       "r": 0,
       "g": 255,
@@ -36,6 +33,19 @@
       "r": 255,
       "g": 0,
       "b": 0
+    },
+    "difficulty": {
+      "_comment": "Difficulty progression settings",
+      "color_thresholds": {
+        "_comment": "Score thresholds to unlock new colors per player count",
+        "1_player": [6, 12, 18],
+        "2_player": [3, 6],
+        "3_player": [6]
+      },
+      "level_thresholds": [2, 5, 9, 14, 20],
+      "_level_thresholds_comment": "Score thresholds for each difficulty level",
+      "speed_increase_per_level": 0.015,
+      "min_speed": 0.05
     }
   }
 }

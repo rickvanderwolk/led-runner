@@ -14,10 +14,119 @@ import board
 import neopixel
 import json
 
+# Default configuration - used as fallback if config.json is missing or invalid
+DEFAULT_CONFIG = {
+    "led": {
+        "count": 60,
+        "pin": 12,
+        "brightness": 255
+    },
+    "game": {
+        "speed": 0.3,
+        "fastforward_multiplier": 3,
+        "buttons": {
+            "yellow": 2,
+            "red": 1,
+            "green": 3,
+            "blue": 0,
+            "start": 9
+        },
+        "player_color": {"r": 255, "g": 255, "b": 255},
+        "success_color": {"r": 0, "g": 255, "b": 0},
+        "fail_color": {"r": 255, "g": 0, "b": 0},
+        "difficulty": {
+            "color_thresholds": {
+                "1_player": [6, 12, 18],
+                "2_player": [3, 6],
+                "3_player": [6]
+            },
+            "level_thresholds": [2, 5, 9, 14, 20],
+            "speed_increase_per_level": 0.015,
+            "min_speed": 0.05
+        }
+    }
+}
+
+
+def deep_merge(base, override):
+    """Deep merge override into base, returning merged dict"""
+    result = base.copy()
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def validate_config(config):
+    """Validate config and return list of errors"""
+    errors = []
+
+    # Check LED config
+    if "led" not in config:
+        errors.append("Missing 'led' section")
+    else:
+        led = config["led"]
+        if "count" not in led or not isinstance(led["count"], int) or led["count"] < 1:
+            errors.append("led.count must be a positive integer")
+        if "pin" in led and led["pin"] not in [12, 13, 18, 21]:
+            errors.append("led.pin must be 12, 13, 18, or 21")
+        if "brightness" in led and (not isinstance(led["brightness"], int) or led["brightness"] < 0 or led["brightness"] > 255):
+            errors.append("led.brightness must be 0-255")
+
+    # Check game config
+    if "game" not in config:
+        errors.append("Missing 'game' section")
+    else:
+        game = config["game"]
+        if "buttons" not in game:
+            errors.append("Missing 'game.buttons' section")
+        else:
+            for btn in ["yellow", "red", "green", "blue", "start"]:
+                if btn not in game["buttons"]:
+                    errors.append(f"Missing button: {btn}")
+
+    return errors
+
+
+def load_config(config_file="config.json"):
+    """Load and validate config, falling back to defaults on error"""
+    try:
+        with open(config_file, 'r') as f:
+            user_config = json.load(f)
+
+        # Merge with defaults (user config overrides defaults)
+        config = deep_merge(DEFAULT_CONFIG, user_config)
+
+        # Validate
+        errors = validate_config(config)
+        if errors:
+            print(f"⚠️  Config warnings:")
+            for error in errors:
+                print(f"   - {error}")
+            print(f"   Using defaults for invalid values")
+
+        return config
+
+    except FileNotFoundError:
+        print(f"⚠️  Config file not found: {config_file}")
+        print(f"   Using default configuration")
+        return DEFAULT_CONFIG.copy()
+
+    except json.JSONDecodeError as e:
+        print(f"⚠️  Invalid JSON in config file: {e}")
+        print(f"   Using default configuration")
+        return DEFAULT_CONFIG.copy()
+
+    except Exception as e:
+        print(f"⚠️  Error loading config: {e}")
+        print(f"   Using default configuration")
+        return DEFAULT_CONFIG.copy()
+
 
 class LEDGame:
     HIGHSCORE_FILE = "highscore.txt"
-    FASTFORWARD_MULTIPLIER = 3  # How much faster when holding d-pad right
 
     # Game states
     STATE_PLAYING = 'playing'
@@ -26,12 +135,15 @@ class LEDGame:
 
     def __init__(self, config_file="config.json"):
         """Initialize the game with configuration"""
-        # Load configuration
-        with open(config_file, 'r') as f:
-            config = json.load(f)
+        # Load configuration with validation and fallback
+        config = load_config(config_file)
 
         self.led_config = config['led']
         self.game_config = config['game']
+
+        # Store difficulty settings
+        self.difficulty_config = self.game_config.get('difficulty', DEFAULT_CONFIG['game']['difficulty'])
+        self.fastforward_multiplier = self.game_config.get('fastforward_multiplier', 3)
 
         # GPIO pin mapping
         gpio_map = {
@@ -371,72 +483,92 @@ class LEDGame:
 
     def get_available_colors(self):
         """Return available colors based on score and player count"""
+        all_colors = ['yellow', 'red', 'green', 'blue']
+        thresholds = self.difficulty_config.get('color_thresholds', {})
+
         if self.num_players == 1:
             # Single player: progressive unlock
-            if self.score >= 18:
-                return ['yellow', 'red', 'green', 'blue']
-            elif self.score >= 12:
-                return ['yellow', 'red', 'green']
-            elif self.score >= 6:
-                return ['yellow', 'red']
+            player_thresholds = thresholds.get('1_player', [6, 12, 18])
+            if self.score >= player_thresholds[2] if len(player_thresholds) > 2 else 18:
+                return all_colors
+            elif self.score >= player_thresholds[1] if len(player_thresholds) > 1 else 12:
+                return all_colors[:3]
+            elif self.score >= player_thresholds[0] if len(player_thresholds) > 0 else 6:
+                return all_colors[:2]
             else:
-                return ['yellow']
+                return all_colors[:1]
         elif self.num_players == 2:
             # 2 players: P1=yellow+green, P2=red+blue (unlock order)
-            if self.score >= 6:
-                return ['yellow', 'red', 'green', 'blue']
-            elif self.score >= 3:
-                return ['yellow', 'red', 'green']
+            player_thresholds = thresholds.get('2_player', [3, 6])
+            if self.score >= player_thresholds[1] if len(player_thresholds) > 1 else 6:
+                return all_colors
+            elif self.score >= player_thresholds[0] if len(player_thresholds) > 0 else 3:
+                return all_colors[:3]
             else:
-                return ['yellow', 'red']
+                return all_colors[:2]
         elif self.num_players == 3:
             # 3 players: start with 1 each, P3 gets second color later
-            if self.score >= 6:
-                return ['yellow', 'red', 'green', 'blue']
+            player_thresholds = thresholds.get('3_player', [6])
+            if self.score >= player_thresholds[0] if len(player_thresholds) > 0 else 6:
+                return all_colors
             else:
-                return ['yellow', 'red', 'green']
+                return all_colors[:3]
         else:
             # 4 players: all colors from start
-            return ['yellow', 'red', 'green', 'blue']
+            return all_colors
 
     def update_difficulty(self):
         """Update difficulty level based on score"""
-        if self.score <= 2:
-            new_difficulty = 1
-        elif self.score <= 5:
-            new_difficulty = 2
-        elif self.score <= 9:
-            new_difficulty = 3
-        elif self.score <= 14:
-            new_difficulty = 4
-        elif self.score <= 20:
-            new_difficulty = 5
-        else:
-            new_difficulty = 5 + ((self.score - 20) // 8)
+        level_thresholds = self.difficulty_config.get('level_thresholds', [2, 5, 9, 14, 20])
+        speed_increase = self.difficulty_config.get('speed_increase_per_level', 0.015)
+        min_speed = self.difficulty_config.get('min_speed', 0.05)
+
+        # Calculate difficulty level based on thresholds
+        new_difficulty = 1
+        for i, threshold in enumerate(level_thresholds):
+            if self.score > threshold:
+                new_difficulty = i + 2
+            else:
+                break
+
+        # Beyond max threshold, keep increasing
+        if self.score > level_thresholds[-1]:
+            new_difficulty = len(level_thresholds) + 1 + ((self.score - level_thresholds[-1]) // 8)
 
         if new_difficulty > self.current_difficulty:
             self.current_difficulty = new_difficulty
             self.spawn_interval = max(3, self.led_config['count'] // self.current_difficulty)
-            self.current_speed = max(0.05, self.base_speed - (self.current_difficulty * 0.015))
+            self.current_speed = max(min_speed, self.base_speed - (self.current_difficulty * speed_increase))
 
             print(f"⚡ Level {self.current_difficulty}!")
 
         # Announce new colors based on player count
         available = self.get_available_colors()
+        thresholds = self.difficulty_config.get('color_thresholds', {})
+
         if self.num_players == 1:
-            if len(available) == 2 and self.score == 6:
+            player_thresholds = thresholds.get('1_player', [6, 12, 18])
+            t1 = player_thresholds[0] if len(player_thresholds) > 0 else 6
+            t2 = player_thresholds[1] if len(player_thresholds) > 1 else 12
+            t3 = player_thresholds[2] if len(player_thresholds) > 2 else 18
+            if len(available) == 2 and self.score == t1:
                 print(f"🎨 +Red!")
-            elif len(available) == 3 and self.score == 12:
+            elif len(available) == 3 and self.score == t2:
                 print(f"🎨 +Green!")
-            elif len(available) == 4 and self.score == 18:
+            elif len(available) == 4 and self.score == t3:
                 print(f"🎨 +Blue!")
         elif self.num_players == 2:
-            if len(available) == 3 and self.score == 3:
+            player_thresholds = thresholds.get('2_player', [3, 6])
+            t1 = player_thresholds[0] if len(player_thresholds) > 0 else 3
+            t2 = player_thresholds[1] if len(player_thresholds) > 1 else 6
+            if len(available) == 3 and self.score == t1:
                 print(f"🎨 +Green (P1)!")
-            elif len(available) == 4 and self.score == 6:
+            elif len(available) == 4 and self.score == t2:
                 print(f"🎨 +Blue (P2)!")
         elif self.num_players == 3:
-            if len(available) == 4 and self.score == 6:
+            player_thresholds = thresholds.get('3_player', [6])
+            t1 = player_thresholds[0] if len(player_thresholds) > 0 else 6
+            if len(available) == 4 and self.score == t1:
                 print(f"🎨 +Blue (P3)!")
 
     def spawn_obstacle(self):
@@ -610,7 +742,7 @@ class LEDGame:
                         if not getattr(self, '_was_fastforward', False):
                             print("⏩ Fast-forward!")
                             self._was_fastforward = True
-                        effective_speed = self.current_speed / self.FASTFORWARD_MULTIPLIER
+                        effective_speed = self.current_speed / self.fastforward_multiplier
                     elif getattr(self, '_was_fastforward', False):
                         self._was_fastforward = False
                     if current_time - self.last_update >= effective_speed:
