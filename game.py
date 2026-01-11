@@ -8,6 +8,7 @@ import time
 import random
 import signal
 import sys
+import os
 import pygame
 import board
 import neopixel
@@ -15,6 +16,7 @@ import json
 
 
 class LEDGame:
+    HIGHSCORE_FILE = "highscore.txt"
     # Game states
     STATE_PLAYING = 'playing'
     STATE_PAUSED = 'paused'
@@ -283,6 +285,54 @@ class LEDGame:
 
         self.strip.show()
 
+    def load_highscore(self):
+        """Load highscore from file, return 0 if not exists"""
+        if os.path.exists(self.HIGHSCORE_FILE):
+            try:
+                with open(self.HIGHSCORE_FILE, 'r') as f:
+                    return int(f.read().strip())
+            except (ValueError, IOError):
+                return 0
+        return 0
+
+    def save_highscore(self, score):
+        """Save highscore to file"""
+        with open(self.HIGHSCORE_FILE, 'w') as f:
+            f.write(str(score))
+
+    def show_highscore_effect(self):
+        """Show colorful rainbow effect for new highscore"""
+        colors = [
+            (255, 0, 0),      # Red
+            (255, 127, 0),    # Orange
+            (255, 255, 0),    # Yellow
+            (0, 255, 0),      # Green
+            (0, 0, 255),      # Blue
+            (75, 0, 130),     # Indigo
+            (148, 0, 211),    # Violet
+        ]
+
+        # Rainbow wave effect - 3 waves
+        for wave in range(3):
+            for offset in range(self.led_config['count'] + len(colors)):
+                self.strip.fill((0, 0, 0))
+                for i, color in enumerate(colors):
+                    pos = offset - i * 2
+                    if 0 <= pos < self.led_config['count']:
+                        self.strip[pos] = color
+                self.strip.show()
+                time.sleep(0.02)
+
+        # Flash all colors
+        for _ in range(3):
+            for color in colors:
+                self.strip.fill(color)
+                self.strip.show()
+                time.sleep(0.1)
+
+        self.strip.fill((0, 0, 0))
+        self.strip.show()
+
     def press_button(self, player_idx, button, color_name):
         """Register button press for a specific player"""
         key = (player_idx, button)
@@ -403,9 +453,22 @@ class LEDGame:
 
         self.show_animation(self.game_config['fail_color'], 1.0, 3)
 
-        print(f"\n{'='*40}")
-        print(f"🏆 FINAL SCORE: {self.score}")
-        print(f"{'='*40}")
+        # Check for highscore
+        highscore = self.load_highscore()
+        is_new_highscore = self.score > highscore
+
+        if is_new_highscore:
+            print(f"\n{'='*40}")
+            print(f"🎉 NEW HIGHSCORE: {self.score}!")
+            print(f"{'='*40}")
+            self.show_highscore_effect()
+            self.save_highscore(self.score)
+        else:
+            print(f"\n{'='*40}")
+            print(f"🏆 FINAL SCORE: {self.score}")
+            print(f"   Highscore: {highscore}")
+            print(f"{'='*40}")
+
         print(f"\nPress START for new game...")
 
         self.show_score_digits()
